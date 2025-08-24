@@ -1,23 +1,37 @@
-from graphics import *
+from graphics import GraphWin
 import math
-from SceneObjects import *
-from VectorUtilities import *
-from ColorUtilities import *
+from SceneObjects import Scene, Sphere
+from VectorUtilities import add, sub, mul_scalar, normalize, dot, opposite
+from ColorUtilities import scale_rgb, rgb_to_hex
+from concurrent.futures import ThreadPoolExecutor
 
 # ---------- Ray Tracer Core ----------
 
-def canvas_to_viewport(x, y, Vw, Vh, d, Cw, Ch):
+def canvas_to_viewport(x: float, y: float, Vw: float, Vh: float, d: float, Cw: int, Ch: int) -> tuple:
+    """Convert canvas coordinates to viewport coordinates."""
     return (x * Vw / Cw, y * Vh / Ch, d)
 
-def trace_ray(O, D, t_min, t_max, scene, background=(255,255,255)):
+
+def trace_ray(
+    origin: tuple,
+    direction: tuple,
+    t_min: float,
+    t_max: float,
+    scene: Scene,
+    background=(255, 255, 255)
+) -> tuple:
+    """
+    Trace a ray from the camera through the scene and return the color.
+    """
     closest_t = float('inf')
     closest_obj = None
 
+    # Find nearest intersection
     for obj in scene.objects:
-        ts = obj.intersect(O, D)
-        if ts is None:
+        intersections = obj.intersect(origin, direction)
+        if intersections is None:
             continue
-        for t in ts:
+        for t in intersections:
             if t_min <= t <= t_max and t < closest_t:
                 closest_t = t
                 closest_obj = obj
@@ -25,76 +39,91 @@ def trace_ray(O, D, t_min, t_max, scene, background=(255,255,255)):
     if closest_obj is None:
         return background
 
-    # Intersection point
-    P = add(O, mul_scalar(D, closest_t))
-    # Surface normal
+    # Compute intersection and normal
+    P = add(origin, mul_scalar(direction, closest_t))
     N = normalize(sub(P, closest_obj.center))
-    # Diffuse lighting
-    intensity = ComputeLighting(P, N, scene, opposite(D), closest_obj.specular)
+    V = opposite(direction)  # Direction towards camera
+
+    # Compute lighting (diffuse + specular)
+    intensity = compute_lighting(P, N, scene, V, closest_obj.specular)
+
     # Scale color
     return scale_rgb(closest_obj.color, intensity)
 
-def ComputeLighting(P, N, scene, V, s):
-    """Compute diffuse lighting at point P with normal N"""
+
+def compute_lighting(P: tuple, N: tuple, scene: Scene, V: tuple, s: int) -> float:
+    """
+    Compute the lighting intensity at a point with normal N and view vector V.
+    Includes ambient, diffuse, and specular components.
+    """
     intensity = 0.0
+
     for light in scene.lights:
         if light.type == "ambient":
             intensity += light.intensity
-        else:
-            if light.type == "point":
-                L = normalize(sub(light.position, P))
-            else:  # directional
-                L = normalize(light.direction)
+            continue
 
-            # Difuse shading
-            n_dot_l = dot(N, L)
-            if n_dot_l > 0:
-                intensity += light.intensity * n_dot_l
+        # Determine light direction
+        if light.type == "point":
+            L = normalize(sub(light.position, P))
+        else:  # directional
+            L = normalize(light.direction)
 
-            # Specular shading
-            if s != -1:
-                R = sub(mul_scalar(N, 2 * dot(N, L)), L)
-                r_dot_v = dot(R, V)
-                if r_dot_v > 0:
-                    intensity += light.intensity * (r_dot_v ** s)
+        # Diffuse component
+        n_dot_l = dot(N, L)
+        if n_dot_l > 0:
+            intensity += light.intensity * n_dot_l
 
-    return min(1.0, intensity)  # clamp to 1.0
+        # Specular component
+        if s != -1:
+            R = sub(mul_scalar(N, 2 * dot(N, L)), L)
+            r_dot_v = dot(R, V)
+            if r_dot_v > 0:
+                intensity += light.intensity * (r_dot_v ** s)
+
+    return min(1.0, intensity)  # Clamp to 1.0
+
 
 # ---------- Renderer ----------
 
-from concurrent.futures import ThreadPoolExecutor
-
-def render_row(y_img, width, height, O, Vw, Vh, d, scene):
+def render_row(y: int, width: int, height: int, origin: tuple, Vw: float, Vh: float, d: float, scene: Scene) -> tuple:
+    """
+    Render a single row of pixels and return the list of color hex values.
+    """
     row_colors = []
-    y = height/2 - y_img
-    for x_img in range(width):
-        x = x_img - width/2
-        D = normalize(canvas_to_viewport(x, y, Vw, Vh, d, width, height))
-        color = trace_ray(O, D, 1.0, float('inf'), scene)
-        row_colors.append(rgb_to_hex(color))
-    return (y_img, row_colors)
+    y_canvas = height / 2 - y
 
-def render_parallel_rows(win:GraphWin, width:int, height:int, scene:Scene, max_workers=8):
-    O = (0,0,0)
+    for x in range(width):
+        x_canvas = x - width / 2
+        direction = normalize(canvas_to_viewport(x_canvas, y_canvas, Vw, Vh, d, width, height))
+        color = trace_ray(origin, direction, 1.0, float('inf'), scene)
+        row_colors.append(rgb_to_hex(color))
+
+    return (y, row_colors)
+
+
+def render_parallel_rows(win: GraphWin, width: int, height: int, scene: Scene, max_workers: int = 8):
+    """Render the scene using parallel row processing."""
+    origin = (0, 0, 0)
     Vw, Vh, d = 1.0, 1.0, 1.0
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(render_row, y, width, height, O, Vw, Vh, d, scene) for y in range(height)]
-
+        futures = [executor.submit(render_row, y, width, height, origin, Vw, Vh, d, scene) for y in range(height)]
         for future in futures:
-            y_img, row_colors = future.result()
-            for x_img, color_hex in enumerate(row_colors):
-                win.plot(x_img, y_img, color_hex)
+            y, row_colors = future.result()
+            for x, color_hex in enumerate(row_colors):
+                win.plot(x, y, color_hex)
 
 
-
-def render(win:GraphWin, width:int, height:int, scene:Scene):
-    O = (0,0,0)
+def render_sequential(win: GraphWin, width: int, height: int, scene: Scene):
+    """Sequential renderer for testing or small images."""
+    origin = (0, 0, 0)
     Vw, Vh, d = 1.0, 1.0, 1.0
-    for y_img in range(height):
-        y = (height/2 - y_img)
-        for x_img in range(width):
-            x = x_img - width/2
-            D = canvas_to_viewport(x, y, Vw, Vh, d, width, height)
-            color = trace_ray(O, D, 1.0, float('inf'), scene)
-            win.plot(x_img, y_img, rgb_to_hex(color))
+
+    for y in range(height):
+        y_canvas = height / 2 - y
+        for x in range(width):
+            x_canvas = x - width / 2
+            direction = normalize(canvas_to_viewport(x_canvas, y_canvas, Vw, Vh, d, width, height))
+            color = trace_ray(origin, direction, 1.0, float('inf'), scene)
+            win.plot(x, y, rgb_to_hex(color))
