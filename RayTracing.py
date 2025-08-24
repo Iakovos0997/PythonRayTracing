@@ -40,7 +40,7 @@ def trace_ray(
 
     # Compute intersection and normal
     P = origin + direction * closest_t
-    N = (P - closest_obj.center).normalize()
+    N = closest_obj.normal_at(P)
     V = -direction  # Direction towards camera
 
     # Compute lighting (diffuse + specular)
