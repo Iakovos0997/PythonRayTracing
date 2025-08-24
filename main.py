@@ -1,5 +1,4 @@
 from graphics import *
-import math
 from SceneObjects import *
 from VectorUtilities import *
 from ColorUtilities import *
@@ -25,7 +24,7 @@ def main():
 
     scene = Scene(objects, lights)
 
-    render(win, width, height, scene)
+    render_parallel_rows(win, width, height, scene, max_workers=8)
     win.getMouse()
     win.close()
 
