@@ -21,8 +21,10 @@ class SceneObject:
     Base class for all objects in the scene.
     Requires a color attribute and an intersect(O, D) method.
     """
-    def __init__(self, color: Tuple[int, int, int]):
+    def __init__(self, color: Tuple[int, int, int], specular: int = 500, axis: Vector = Vector(0, 1, 0)):
         self.color = color
+        self.specular = specular
+        self.axis = axis.normalize() if axis else None
 
     def intersect(self, O: Vector, D: Vector) -> Optional[Tuple[Number, Number]]:
         raise NotImplementedError("Subclasses must implement the intersect method.")
@@ -40,12 +42,12 @@ class Sphere(SceneObject):
         center: Vector,
         radius: float = 1.0,
         color: Tuple[int, int, int] = (255, 0, 0),
-        specular: int = 500
+        specular: int = 500,
+        axis: Vector = Vector(0,1,0)
     ):
-        super().__init__(color)
+        super().__init__(color, specular=specular, axis=axis)
         self.center = center
         self.radius = radius
-        self.specular = specular
 
     def intersect(self, O: Vector, D: Vector) -> Optional[Tuple[Number, Number]]:
         """
@@ -80,12 +82,10 @@ class Cylinder(SceneObject):
         color: Tuple[int, int, int] = (255, 0, 0),
         specular: int = 500
     ):
-        super().__init__(color)
+        super().__init__(color, specular=specular, axis=axis)
         self.base_center = base_center
-        self.axis = axis.normalize()
         self.radius = radius
         self.height = height
-        self.specular = specular
 
     def intersect(self, O, D):
         """
@@ -141,6 +141,28 @@ class Cylinder(SceneObject):
         else:
             axis_point = self.base_center + self.axis * h
             return (P - axis_point).normalize()
+        
+class Plane(SceneObject):
+    def __init__(self, point: Vector, normal: Vector, color: Tuple[int, int, int] = (255, 0, 0), specular: int = 500, axis: Vector = Vector(0,1,0)):
+        super().__init__(color, specular=specular, axis=axis)
+        self.point = point
+        self.normal = self.axis.normalize()
+
+    def intersect(self, O: Vector, D: Vector) -> Optional[Tuple[Number, Number]]:
+        denom = D.dot(self.normal)
+
+        if abs(denom) < 1e-6:
+            return None
+        
+        t = (self.point - O).dot(self.normal) / denom
+
+        if t < 0:
+            return None
+        
+        return (t,)
+    
+    def normal_at(self, P: Vector) -> Vector:
+        return self.normal
 
     
 # ---------- Lights ----------
