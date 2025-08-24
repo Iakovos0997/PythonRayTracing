@@ -16,10 +16,11 @@ class SceneObject:
 # ------------- Spheres -------------------
 
 class Sphere(SceneObject):
-    def __init__(self, center, radius, color):
+    def __init__(self, center, radius=1, color=(255, 0, 0), specular=500):
         super().__init__(color)
         self.center = center
         self.radius = radius
+        self.specular = specular
 
     def intersect(self, O, D):
         CO = sub(O, self.center)
