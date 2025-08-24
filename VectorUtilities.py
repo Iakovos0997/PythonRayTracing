@@ -28,3 +28,6 @@ def normalize(v):
     if l == 0:
         return v
     return tuple(x / l for x in v)
+
+def opposite(v):
+    return tuple(-x for x in v)
