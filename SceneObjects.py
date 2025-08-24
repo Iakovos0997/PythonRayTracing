@@ -26,6 +26,9 @@ class SceneObject:
 
     def intersect(self, O: Vector, D: Vector) -> Optional[Tuple[Number, Number]]:
         raise NotImplementedError("Subclasses must implement the intersect method.")
+    
+    def normal_at(self, P: Vector) -> Vector:
+        raise NotImplementedError("Subclasses must implement the normal_at method.")
 
 
 class Sphere(SceneObject):
@@ -62,54 +65,84 @@ class Sphere(SceneObject):
         t1 = (-b + sqrt_disc) / (2 * a)
         t2 = (-b - sqrt_disc) / (2 * a)
         return (t1, t2)
+    
+    def normal_at(self, P: Vector) -> Vector:
+        # Vector from center to P, normalized
+        return (P - self.center).normalize()
 
-# class Cylinder(SceneObject):
-#     def __init__(
-#         self,
-#         base_center: Vector,
-#         radius: float = 1.0,
-#         height: float = 1.0,
-#         color: Tuple[int, int, int] = (255, 0, 0),
-#         specular: int = 500
-#     ):
-#         super().__init__(color)
-#         self.base_center = base_center
-#         self.radius = radius
-#         self.height = height
-#         self.specular = specular
+class Cylinder(SceneObject):
+    def __init__(
+        self,
+        base_center: Vector,
+        axis: Vector = Vector(0,1,0),
+        radius: float = 1.0,
+        height: float = 1.0,
+        color: Tuple[int, int, int] = (255, 0, 0),
+        specular: int = 500
+    ):
+        super().__init__(color)
+        self.base_center = base_center
+        self.axis = axis.normalize()
+        self.radius = radius
+        self.height = height
+        self.specular = specular
 
-#     def intersect(self, O, D):
-        
-#         # Step 1: Compute quadratic coefficients for infinite cylinder along Y-axis
-#         a = D[0]**2 + D[2]**2
-#         b = 2 * ((O[0] - self.base_center[0]) * D[0] + (O[2] - self.base_center[2]) * D[2])
-#         c = (O[0] - self.base_center[0])**2 + (O[2] - self.base_center[2])**2 - self.radius**2
+    def intersect(self, O, D):
+        """
+        Intersect ray O + t*D with cylinder (including caps).
+        Returns tuple of valid t values or None.
+        """
+        axis = self.axis
+        CO = O - self.base_center
 
-#         discriminant = b**2 - 4 * a * c
-#         if discriminant < 0:
-#             return None # No intersection
-        
-#         # Step 2: Solve quadratic for t-values
-#         sqrt_disc = math.sqrt(discriminant)
-#         t1 = (-b - sqrt_disc) / (2 * a)
-#         t2 = (-b + sqrt_disc) / (2 * a)
-#         t_candidates = [t1, t2]
+        # Project D and CO onto plane perpendicular to axis
+        D_proj = D - axis * D.dot(axis)
+        CO_proj = CO - axis * CO.dot(axis)
 
-#         # Step 3: Filter t-values to find valid intersections within cylinder height
-#         valid_t = []
-#         for t in t_candidates:
-#             if t < 0:
-#                 continue
-#             y = O[1] + t * D[1]
-#             if self.base_center[1] <= y <= self.base_center[1] + self.height:
-#                 valid_t.append(t)
+        a = D_proj.dot(D_proj)
+        b = 2 * D_proj.dot(CO_proj)
+        c = CO_proj.dot(CO_proj) - self.radius**2
 
-#         # Step 4
+        t_side = []
+        disc = b*b - 4*a*c
+        if disc >= 0:
+            sqrt_disc = math.sqrt(disc)
+            for t in [(-b - sqrt_disc) / (2*a), (-b + sqrt_disc) / (2*a)]:
+                P = O + D * t
+                h = (P - self.base_center).dot(axis)
+                if 0 <= h <= self.height:
+                    t_side.append(t)
 
-#         if valid_t.empty():
-#             return None
-        
-#         return valid_t
+        # Check caps
+        t_caps = []
+        for cap_h, cap_normal in [(0, -axis), (self.height, axis)]:
+            denom = D.dot(cap_normal)
+            if abs(denom) > 1e-6:
+                t = ((self.base_center + axis*cap_h) - O).dot(cap_normal) / denom
+                if t > 0:
+                    P = O + D * t
+                    # check if within radius
+                    if (P - (self.base_center + axis*cap_h) - axis*0).length() <= self.radius:
+                        t_caps.append(t)
+
+        t_all = t_side + t_caps
+        if not t_all:
+            return None
+        return tuple(sorted(t_all))
+
+    def normal_at(self, P):
+        AP = P - self.base_center
+        h = AP.dot(self.axis)
+
+        if abs(h) < 1e-6:  # bottom cap
+            return -self.axis
+        elif abs(h - self.height) < 1e-6:  # top cap
+            return self.axis
+        else:
+            axis_point = self.base_center + self.axis * h
+            return (P - axis_point).normalize()
+
+    
 # ---------- Lights ----------
 
 class Light:
