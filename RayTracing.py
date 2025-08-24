@@ -1,7 +1,6 @@
 from graphics import GraphWin
-import math
-from SceneObjects import Scene, Sphere
-from VectorUtilities import add, sub, mul_scalar, normalize, dot, opposite
+from SceneObjects import Scene
+from VectorUtilities import Vector
 from ColorUtilities import scale_rgb, rgb_to_hex
 from concurrent.futures import ThreadPoolExecutor
 
@@ -9,12 +8,12 @@ from concurrent.futures import ThreadPoolExecutor
 
 def canvas_to_viewport(x: float, y: float, Vw: float, Vh: float, d: float, Cw: int, Ch: int) -> tuple:
     """Convert canvas coordinates to viewport coordinates."""
-    return (x * Vw / Cw, y * Vh / Ch, d)
+    return Vector(x * Vw / Cw, y * Vh / Ch, d)
 
 
 def trace_ray(
-    origin: tuple,
-    direction: tuple,
+    origin: Vector,
+    direction: Vector,
     t_min: float,
     t_max: float,
     scene: Scene,
@@ -40,9 +39,9 @@ def trace_ray(
         return background
 
     # Compute intersection and normal
-    P = add(origin, mul_scalar(direction, closest_t))
-    N = normalize(sub(P, closest_obj.center))
-    V = opposite(direction)  # Direction towards camera
+    P = origin + direction * closest_t
+    N = (P - closest_obj.center).normalize()
+    V = -direction  # Direction towards camera
 
     # Compute lighting (diffuse + specular)
     intensity = compute_lighting(P, N, scene, V, closest_obj.specular)
@@ -51,7 +50,7 @@ def trace_ray(
     return scale_rgb(closest_obj.color, intensity)
 
 
-def compute_lighting(P: tuple, N: tuple, scene: Scene, V: tuple, s: int) -> float:
+def compute_lighting(P: Vector, N: Vector, scene: Scene, V: Vector, s: int) -> float:
     """
     Compute the lighting intensity at a point with normal N and view vector V.
     Includes ambient, diffuse, and specular components.
@@ -65,19 +64,19 @@ def compute_lighting(P: tuple, N: tuple, scene: Scene, V: tuple, s: int) -> floa
 
         # Determine light direction
         if light.type == "point":
-            L = normalize(sub(light.position, P))
+            L = (light.position - P).normalize()
         else:  # directional
-            L = normalize(light.direction)
+            L = light.direction.normalize()
 
         # Diffuse component
-        n_dot_l = dot(N, L)
+        n_dot_l = N.dot(L)
         if n_dot_l > 0:
             intensity += light.intensity * n_dot_l
 
         # Specular component
         if s != -1:
-            R = sub(mul_scalar(N, 2 * dot(N, L)), L)
-            r_dot_v = dot(R, V)
+            R = N * (2 * n_dot_l) - L
+            r_dot_v = R.dot(V)
             if r_dot_v > 0:
                 intensity += light.intensity * (r_dot_v ** s)
 
@@ -95,7 +94,7 @@ def render_row(y: int, width: int, height: int, origin: tuple, Vw: float, Vh: fl
 
     for x in range(width):
         x_canvas = x - width / 2
-        direction = normalize(canvas_to_viewport(x_canvas, y_canvas, Vw, Vh, d, width, height))
+        direction = canvas_to_viewport(x_canvas, y_canvas, Vw, Vh, d, width, height).normalize()
         color = trace_ray(origin, direction, 1.0, float('inf'), scene)
         row_colors.append(rgb_to_hex(color))
 
@@ -104,7 +103,7 @@ def render_row(y: int, width: int, height: int, origin: tuple, Vw: float, Vh: fl
 
 def render_parallel_rows(win: GraphWin, width: int, height: int, scene: Scene, max_workers: int = 8):
     """Render the scene using parallel row processing."""
-    origin = (0, 0, 0)
+    origin = Vector(0, 0, 0)
     Vw, Vh, d = 1.0, 1.0, 1.0
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -117,13 +116,13 @@ def render_parallel_rows(win: GraphWin, width: int, height: int, scene: Scene, m
 
 def render_sequential(win: GraphWin, width: int, height: int, scene: Scene):
     """Sequential renderer for testing or small images."""
-    origin = (0, 0, 0)
+    origin = Vector(0, 0, 0)
     Vw, Vh, d = 1.0, 1.0, 1.0
 
     for y in range(height):
         y_canvas = height / 2 - y
         for x in range(width):
             x_canvas = x - width / 2
-            direction = normalize(canvas_to_viewport(x_canvas, y_canvas, Vw, Vh, d, width, height))
+            direction = canvas_to_viewport(x_canvas, y_canvas, Vw, Vh, d, width, height).normalize()
             color = trace_ray(origin, direction, 1.0, float('inf'), scene)
             win.plot(x, y, rgb_to_hex(color))

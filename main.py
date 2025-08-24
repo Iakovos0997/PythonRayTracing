@@ -10,10 +10,10 @@ def main():
     win = GraphWin("Object-Agnostic Raytracer", width, height, autoflush=False)
 
     objects = [
-        Sphere((0, -1, 3), 1, (255, 0, 0)),   # Red
-        Sphere((2,  0, 4), 1, (0, 0, 255)),   # Blue
-        Sphere((-2, 0, 4), 1, (0, 255, 0)),   # Green,
-        Sphere((0, -5001, 0), 5000, (255, 255, 0))
+        Sphere(Vector(0, -1, 3), 1, (255, 0, 0), 500),   # Red
+        Sphere(Vector(2,  0, 4), 1, (0, 0, 255), 500),   # Blue
+        Sphere(Vector(-2, 0, 4), 1, (0, 255, 0), 10),   # Green,
+        Sphere(Vector(0, -5001, 0), 5000, (255, 255, 0), 1000) # Yellow
     ]
 
     lights = [
