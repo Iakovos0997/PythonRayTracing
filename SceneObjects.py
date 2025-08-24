@@ -1,4 +1,5 @@
 import math
+import numpy as np
 from VectorUtilities import Vector
 from typing import List, Tuple, Optional, Union
 
@@ -163,6 +164,100 @@ class Plane(SceneObject):
     
     def normal_at(self, P: Vector) -> Vector:
         return self.normal
+
+class Torus(SceneObject):
+    def __init__(
+        self, 
+        center: Vector, 
+        major_radius: float = 2.0, 
+        minor_radius: float = 0.5, 
+        color: Tuple[int, int, int] = (255, 0, 0), 
+        specular: int = 500, 
+        axis: Vector = Vector(0,1,0)
+    ):
+        super().__init__(color, specular=specular, axis=axis)
+        self.center = center
+        self.major_radius = major_radius
+        self.minor_radius = minor_radius
+
+    def intersect(self, O: Vector, D: Vector) -> Optional[float]:
+        """
+        Ray-torus intersection with orientation support (axis).
+        O = ray origin (Vector)
+        D = ray direction (Vector), assumed normalized
+        Returns nearest positive t or None.
+        """
+        # Build orthonormal basis (u, v, w) with w = axis
+        w = self.axis
+        u = Vector(1, 0, 0) if abs(w.x) < 0.9 else Vector(0, 1, 0)
+        u = (u.cross(w)).normalize()
+        v = w.cross(u)
+
+        # Transform ray into local torus coordinates
+        O_rel = O - self.center
+        O_local = Vector(O_rel.dot(u), O_rel.dot(v), O_rel.dot(w))
+        D_local = Vector(D.dot(u), D.dot(v), D.dot(w))
+
+        # Quartic coefficients (torus aligned to z-axis)
+        dx, dy, dz = D_local.x, D_local.y, D_local.z
+        ox, oy, oz = O_local.x, O_local.y, O_local.z
+        R, r = self.major_radius, self.minor_radius
+
+        sum_d_sq = dx*dx + dy*dy + dz*dz
+        e = ox*ox + oy*oy + oz*oz - R*R - r*r
+        f = ox*dx + oy*dy + oz*dz
+
+        A = sum_d_sq * sum_d_sq
+        B = 4 * f * sum_d_sq
+        C = 2 * sum_d_sq * e + 4 * f*f + 4 * R*R * dz*dz
+        D_coef = 4 * f * e + 8 * R*R * oz * dz
+        E = e*e - 4 * R*R * (r*r - oz*oz)
+
+        coeffs = [A, B, C, D_coef, E]
+
+        # Solve quartic
+        roots = np.roots(coeffs)
+        roots = [t.real for t in roots if abs(t.imag) < 1e-6 and t > 1e-6]
+
+        if not roots:
+            return None
+
+        # return all valid intersections (tuple), sorted ascending
+        return tuple(sorted(roots))
+
+    
+    def normal_at(self, P: Vector) -> Vector:
+        """
+        Compute normal at point P on torus, accounting for orientation (axis).
+        """
+        # Translate point relative to torus center
+        P_rel = P - self.center
+
+        # Build a local basis: u, v, w
+        w = self.axis
+        u = Vector(1, 0, 0) if abs(w.x) < 0.9 else Vector(0, 1, 0)
+        u = (u.cross(w)).normalize()
+        v = w.cross(u)
+
+        # Express P_rel in local coordinates
+        x = P_rel.dot(u)
+        y = P_rel.dot(v)
+        z = P_rel.dot(w)
+
+        # --- Compute normal in local torus space (z = axis) ---
+        len_xy = math.sqrt(x**2 + y**2)
+        if len_xy == 0:
+            major_circle_x = self.major_radius
+            major_circle_y = 0
+        else:
+            major_circle_x = x * self.major_radius / len_xy
+            major_circle_y = y * self.major_radius / len_xy
+
+        N_local = Vector(x - major_circle_x, y - major_circle_y, z).normalize()
+
+        # --- Transform back to world coordinates ---
+        N_world = (u * N_local.x + v * N_local.y + w * N_local.z).normalize()
+        return N_world
 
     
 # ---------- Lights ----------

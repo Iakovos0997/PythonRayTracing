@@ -34,6 +34,18 @@ class Vector:
 
     __rmul__ = __mul__  # allow scalar * vector
 
+    # Negation
+    def __neg__(self):
+        return Vector(-self.x, -self.y, -self.z)
+    
+    # Cross product
+    def cross(self, other: "Vector") -> "Vector":
+        return Vector(
+            self.y * other.z - self.z * other.y,
+            self.z * other.x - self.x * other.z,
+            self.x * other.y - self.y * other.x
+        )
+    
     # Dot product
     def dot(self, other):
         if not isinstance(other, Vector):
@@ -50,7 +62,3 @@ class Vector:
         if l == 0:
             return Vector(0, 0, 0)
         return Vector(self.x / l, self.y / l, self.z / l)
-
-    # Negation
-    def __neg__(self):
-        return Vector(-self.x, -self.y, -self.z)
