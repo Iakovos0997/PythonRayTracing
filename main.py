@@ -3,8 +3,24 @@ import math
 
 # ---------- Ray Tracer Core ----------
 
-def dot(a, b): return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]
-def sub(a, b): return (a[0]-b[0], a[1]-b[1], a[2]-b[2])
+def _validate_vectors(a, b):
+    if not (isinstance(a, (list, tuple)) and isinstance(b, (list, tuple))):
+        raise TypeError("Both operands must be lists or tuples.")
+    if len(a) != len(b):
+        raise ValueError("Vectors must have the same dimension.")
+    if not all(isinstance(x, (int, float)) for x in a+b):
+        raise TypeError("Vector elements must be int or float.")
+
+def dot(a, b):
+    """Dot product of two vectors (any dimension)."""
+    _validate_vectors(a, b)
+    return sum(x*y for x, y in zip(a, b))
+
+def sub(a, b):
+    """Subtract vector b from a (any dimension)."""
+    _validate_vectors(a, b)
+    return tuple(x - y for x, y in zip(a, b))
+
 
 def canvas_to_viewport(x, y, Vw, Vh, d, Cw, Ch):
     return (x * Vw / Cw, y * Vh / Ch, d)
