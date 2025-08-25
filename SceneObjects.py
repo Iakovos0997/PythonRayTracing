@@ -22,10 +22,12 @@ class SceneObject:
     Base class for all objects in the scene.
     Requires a color attribute and an intersect(O, D) method.
     """
-    def __init__(self, color: Tuple[int, int, int], specular: int = 500, axis: Vector = Vector(0, 1, 0)):
+    def __init__(self, color: Tuple[int, int, int], specular: int = 500, axis: Vector = Vector(0, 1, 0), reflective: float = 0.0):
         self.color = color
         self.specular = specular
         self.axis = axis.normalize() if axis else None
+        self.reflective = reflective  # 0 = no reflection, 1 = perfect mirror
+
 
     def intersect(self, O: Vector, D: Vector) -> Optional[Tuple[Number, Number]]:
         raise NotImplementedError("Subclasses must implement the intersect method.")
@@ -44,9 +46,10 @@ class Sphere(SceneObject):
         radius: float = 1.0,
         color: Tuple[int, int, int] = (255, 0, 0),
         specular: int = 500,
-        axis: Vector = Vector(0,1,0)
+        axis: Vector = Vector(0,1,0),
+        reflective: float = 0.0
     ):
-        super().__init__(color, specular=specular, axis=axis)
+        super().__init__(color, specular=specular, axis=axis, reflective=reflective)
         self.center = center
         self.radius = radius
 
@@ -81,9 +84,10 @@ class Cylinder(SceneObject):
         radius: float = 1.0,
         height: float = 1.0,
         color: Tuple[int, int, int] = (255, 0, 0),
-        specular: int = 500
+        specular: int = 500,
+        reflective: float = 0.0
     ):
-        super().__init__(color, specular=specular, axis=axis)
+        super().__init__(color, specular=specular, axis=axis, reflective=reflective)
         self.base_center = base_center
         self.radius = radius
         self.height = height
@@ -144,8 +148,16 @@ class Cylinder(SceneObject):
             return (P - axis_point).normalize()
         
 class Plane(SceneObject):
-    def __init__(self, point: Vector, normal: Vector, color: Tuple[int, int, int] = (255, 0, 0), specular: int = 500, axis: Vector = Vector(0,1,0)):
-        super().__init__(color, specular=specular, axis=axis)
+    def __init__(
+            self, 
+            point: Vector, 
+            normal: Vector, 
+            color: Tuple[int, int, int] = (255, 0, 0), 
+            specular: int = 500, 
+            axis: Vector = Vector(0,1,0),
+            reflective: float = 0.0
+        ):
+        super().__init__(color, specular=specular, axis=axis, reflective=reflective)
         self.point = point
         self.normal = self.axis.normalize()
 
@@ -173,9 +185,10 @@ class Torus(SceneObject):
         minor_radius: float = 0.5, 
         color: Tuple[int, int, int] = (255, 0, 0), 
         specular: int = 500, 
-        axis: Vector = Vector(0,1,0)
+        axis: Vector = Vector(0,1,0),
+        reflective: float = 0.0
     ):
-        super().__init__(color, specular=specular, axis=axis)
+        super().__init__(color, specular=specular, axis=axis, reflective=reflective)
         self.center = center
         self.major_radius = major_radius
         self.minor_radius = minor_radius
