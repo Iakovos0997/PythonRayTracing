@@ -11,46 +11,65 @@ def canvas_to_viewport(x: float, y: float, Vw: float, Vh: float, d: float, Cw: i
     return Vector(x * Vw / Cw, y * Vh / Ch, d)
 
 
-def trace_ray(
-    origin: Vector,
-    direction: Vector,
-    t_min: float,
-    t_max: float,
-    scene: Scene,
-    background=(255, 255, 255)
-) -> tuple:
+MAX_DEPTH = 3  # maximum recursion depth
+
+def reflect(D: Vector, N: Vector) -> Vector:
+    """Reflect direction D around normal N."""
+    return D - N * 2 * D.dot(N)
+
+
+def trace_ray(O: Vector, D: Vector, t_min: float, t_max: float, scene: Scene, depth: int = 0) -> tuple:
     """
-    Trace a ray from the camera through the scene and return the color.
+    Trace a ray from origin O along direction D through the scene.
+    Returns an RGB color tuple.
+    Supports diffuse, specular, and reflective surfaces.
     """
+    if depth > MAX_DEPTH:
+        return (0, 0, 0)  # background for deep recursion
+
+    # Find closest intersection
     closest_t = float('inf')
     closest_obj = None
 
-    # Find nearest intersection
     for obj in scene.objects:
-        intersections = obj.intersect(origin, direction)
-        if intersections is None:
+        ts = obj.intersect(O, D)
+        if ts is None:
             continue
-        for t in intersections:
+        for t in ts:
             if t_min <= t <= t_max and t < closest_t:
                 closest_t = t
                 closest_obj = obj
 
     if closest_obj is None:
-        return background
+        return (255, 255, 255)  # background color
 
-    # Compute intersection and normal
-    P = origin + direction * closest_t
+    # Intersection point
+    P = O + D * closest_t
+    # Surface normal
     N = closest_obj.normal_at(P)
-    V = -direction  # Direction towards camera
+    # View vector (towards camera)
+    V = -D
+    # Local lighting (diffuse + specular)
+    intensity = ComputeLighting(P, N, scene, V, closest_obj.specular)
+    local_color = scale_rgb(closest_obj.color, intensity)
 
-    # Compute lighting (diffuse + specular)
-    intensity = compute_lighting(P, N, scene, V, closest_obj.specular)
+    # Handle reflection
+    reflective = getattr(closest_obj, "reflective", 0.0)
+    if reflective > 0:
+        R = reflect(D, N).normalize()
+        # Small offset to avoid self-intersection
+        epsilon = 1e-4
+        reflected_color = trace_ray(P + R * epsilon, R, t_min, t_max, scene, depth + 1)
+        # Mix colors
+        local_color = tuple(
+            int(local_color[i] * (1 - reflective) + reflected_color[i] * reflective)
+            for i in range(3)
+        )
 
-    # Scale color
-    return scale_rgb(closest_obj.color, intensity)
+    return local_color
 
 
-def compute_lighting(P: Vector, N: Vector, scene: Scene, V: Vector, s: int) -> float:
+def ComputeLighting(P: Vector, N: Vector, scene: Scene, V: Vector, s: int) -> float:
     """
     Compute the lighting intensity at a point with normal N and view vector V.
     Includes ambient, diffuse, and specular components.
@@ -100,20 +119,6 @@ def render_row(y: int, width: int, height: int, origin: tuple, Vw: float, Vh: fl
 
     return (y, row_colors)
 
-
-def render_parallel_rows(win: GraphWin, width: int, height: int, scene: Scene, max_workers: int = 8):
-    """Render the scene using parallel row processing."""
-    origin = Vector(0, 0, 0)
-    Vw, Vh, d = 1.0, 1.0, 1.0
-
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(render_row, y, width, height, origin, Vw, Vh, d, scene) for y in range(height)]
-        for future in futures:
-            y, row_colors = future.result()
-            for x, color_hex in enumerate(row_colors):
-                win.plot(x, y, color_hex)
-
-
 def render_sequential(win: GraphWin, width: int, height: int, scene: Scene):
     """Sequential renderer for testing or small images."""
     origin = Vector(0, 0, 0)
@@ -126,3 +131,25 @@ def render_sequential(win: GraphWin, width: int, height: int, scene: Scene):
             direction = canvas_to_viewport(x_canvas, y_canvas, Vw, Vh, d, width, height).normalize()
             color = trace_ray(origin, direction, 1.0, float('inf'), scene)
             win.plot(x, y, rgb_to_hex(color))
+
+from concurrent.futures import ProcessPoolExecutor, as_completed
+
+def render_parallel_rows(win: GraphWin, width: int, height: int, scene: Scene, max_workers: int = None):
+    """Render the scene using parallel row processing (compute first, draw later)."""
+    origin = Vector(0, 0, 0)
+    Vw, Vh, d = 1.0, 1.0, 1.0
+
+    row_results = [None] * height  # preallocate buffer for rows
+
+    # Phase 1: parallel computation
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(render_row, y, width, height, origin, Vw, Vh, d, scene): y for y in range(height)}
+
+        for future in as_completed(futures):
+            y, row_colors = future.result()
+            row_results[y] = row_colors  # store in buffer at correct index
+
+    # Phase 2: sequential drawing
+    for y, row_colors in enumerate(row_results):
+        for x, color_hex in enumerate(row_colors):
+            win.plot(x, y, color_hex)
